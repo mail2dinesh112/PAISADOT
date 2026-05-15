@@ -5,7 +5,7 @@ import logging
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
@@ -19,7 +19,7 @@ from api.common.models import (
     Expense,
     PaymentMethod
 )
-from app.api.authentication.authentication import (
+from api.authentication.authentication import (
     get_current_user
 )
 # =========================================================
@@ -150,16 +150,17 @@ def create_expense(
 # =========================================================
 
 @router.get(
-    "/expenses",
-    tags=["Expense"]
+    "/getexpenses",
+    operation_id="get_expenses",
+    tags=["Authorized API"],
 )
 def get_expenses(
     category_id     : Optional[UUID] = None,
     payment_method  : Optional[PaymentMethod] = None,
     start_date      : Optional[date] = None,
     end_date        : Optional[date] = None,
-    limit           : int = Field(default=10, ge=1, le=100),
-    offset          : int = Field(default=0, ge=0),
+    limit           : int = Query(default=10, ge=1, le=100),
+    offset          : int = Query(default=0, ge=0),
     db              : Session = Depends(get_db),
     current_user    : User = Depends(get_current_user)
 ):
@@ -240,8 +241,9 @@ def get_expenses(
 # =========================================================
 
 @router.get(
-    "/expenses/{expense_id}",
-    tags=["Expense"]
+    "/getexpenses/{expense_id}",
+    operation_id="get_expense",
+    tags=["Authorized API"]
 )
 def get_expense(
     expense_id: UUID,
@@ -288,8 +290,9 @@ def get_expense(
 # =========================================================
 
 @router.put(
-    "/expenses/{expense_id}",
-    tags=["Expense"]
+    "/updateexpense/{expense_id}",
+    operation_id="update_expense",
+    tags=["Authorized API"]
 )
 def update_expense(
     expense_id: UUID,
@@ -380,8 +383,9 @@ def update_expense(
 # =========================================================
 
 @router.delete(
-    "/expenses/{expense_id}",
-    tags=["Expense"]
+    "/deleteexpense/{expense_id}",
+    operation_id="delete_expense",
+    tags=["Authorized API"]
 )
 def delete_expense(
     expense_id: UUID,

@@ -31,7 +31,7 @@ from api.common.models import (
 
 from api.common.session import get_db
 
-from app.api.authentication.authentication import (
+from api.authentication.authentication import (
     get_current_user
 )
 
