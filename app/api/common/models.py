@@ -119,6 +119,16 @@ class Account(Base):
         back_populates="account"
     )
 
+    recurring_expenses = relationship(
+        "RecurringExpense",
+        back_populates="account"
+    )
+
+    budgets = relationship(
+        "Budget",
+        back_populates="account"
+    )
+
 
 # =========================================================
 # USER TABLE
@@ -209,6 +219,21 @@ class User(Base):
         back_populates="created_user"
     )
 
+    recurring_expenses = relationship(
+        "RecurringExpense",
+        back_populates="created_user"
+    )
+
+    refresh_tokens = relationship(
+        "RefreshToken",
+        back_populates="user"
+    )
+
+    budgets = relationship(
+        "Budget",
+        back_populates="created_user"
+    )
+
 
 # =========================================================
 # CATEGORY TABLE
@@ -275,6 +300,16 @@ class Category(Base):
 
     expenses = relationship(
         "Expense",
+        back_populates="category"
+    )
+
+    recurring_expenses = relationship(
+        "RecurringExpense",
+        back_populates="category"
+    )
+
+    budgets = relationship(
+        "Budget",
         back_populates="category"
     )
 
@@ -577,4 +612,86 @@ class RefreshToken(Base):
     user = relationship(
         "User",
         back_populates="refresh_tokens"
+    )
+
+# =========================================================
+# BUDGET TABLE
+# =========================================================
+
+class Budget(Base):
+    __tablename__ = "budgets"
+
+    id = Column(
+        UUID,
+        primary_key=True,
+        server_default=text("gen_random_uuid()")
+    )
+
+    account_id = Column(
+        ForeignKey("accounts.id"),
+        nullable=False
+    )
+
+    # NULL means overall budget
+    category_id = Column(
+        ForeignKey("categories.id"),
+        nullable=True
+    )
+
+    created_by = Column(
+        ForeignKey("users.id"),
+        nullable=False
+    )
+
+    budget_amount = Column(
+        Numeric(12, 2),
+        nullable=False
+    )
+
+    start_date = Column(
+        Date,
+        nullable=False
+    )
+
+    end_date = Column(
+        Date,
+        nullable=False
+    )
+
+    is_active = Column(
+        Boolean,
+        nullable=False,
+        server_default=expression.true()
+    )
+
+    created_at = Column(
+        DateTime,
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP")
+    )
+
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP"),
+        onupdate=text("CURRENT_TIMESTAMP")
+    )
+
+    # =====================================================
+    # RELATIONSHIPS
+    # =====================================================
+
+    account = relationship(
+        "Account",
+        back_populates="budgets"
+    )
+
+    category = relationship(
+        "Category",
+        back_populates="budgets"
+    )
+
+    created_user = relationship(
+        "User",
+        back_populates="budgets"
     )
