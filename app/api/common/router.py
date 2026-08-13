@@ -16,6 +16,7 @@ from api.accounts import accounts
 from api.authentication import authentication
 from api.categories import category
 from api.expanse import expanse
+from api.superadmin import superadmin
 
 
 
@@ -33,6 +34,12 @@ if not cors_allow_origins and environ == "development":
         "http://localhost:3000",
         "http://localhost:5173",
         "http://localhost:8000",
+        "http://localhost:5174",
+        "http://localhost:5175",
+        "http://localhost:5176",
+        "http://localhost:5177",
+        "http://localhost:5178",
+
     ]
 
 if environ == "development" and is_swagger == "True":
@@ -69,6 +76,7 @@ app.include_router(authentication.router)
 app.include_router(user.router)
 app.include_router(category.router)
 app.include_router(expanse.router)
+app.include_router(superadmin.router)
 
 
 # APP Events

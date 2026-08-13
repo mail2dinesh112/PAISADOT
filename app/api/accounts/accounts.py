@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 
-from api.authentication.authentication import get_current_user
+from api.authentication.authentication import require_superadmin
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -48,12 +48,13 @@ class GetAccountsRequestModel(BaseModel):
 def get_accounts(
     request_model: GetAccountsRequestModel,
     session: Session = Depends(get_db),
+    current_user: User = Depends(require_superadmin),
 ):
     logger.info("Get accounts request started")
     try:
         filters = [Account.is_active == True]
         if request_model.account_id:
-            filters.append(Account.id == request_model.account_id)
+            filters.append(Account.id == str(request_model.account_id))
         if request_model.account_name:
             filters.append(Account.account_name == request_model.account_name)
         if request_model.account_type:
@@ -110,7 +111,7 @@ class AccountCreateRequestModel(BaseModel):
 def create_account(
     request_model: AccountCreateRequestModel,
     session: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_superadmin)
 ):
     logger.info("Create/Update account request started")
 
@@ -126,7 +127,7 @@ def create_account(
             # -----------------------------------------------------
             exist_account = session.query(Account).filter(
                 Account.account_name == request_model.account_name,
-                Account.account_type == request_model.account_type
+                Account.account_type == request_model.account_type,
             ).first()
 
             if exist_account:
@@ -140,32 +141,36 @@ def create_account(
             # -----------------------------------------------------
             # Check duplicate email
             # -----------------------------------------------------
-            exist_user = session.query(User).filter(
-                User.email == request_model.user_email
-            ).first()
+            if request_model.user_email:
 
-            if exist_user:
-                return JSONResponse(
-                    status_code=400,
-                    content={
-                        "message": "User with the same email already exists"
-                    }
-                )
+                exist_user = session.query(User).filter(
+                    User.email == request_model.user_email,
+                ).first()
+
+                if exist_user:
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "message": "User with the same email already exists"
+                        }
+                    )
 
             # -----------------------------------------------------
             # Check duplicate phone
             # -----------------------------------------------------
-            exist_user_phone = session.query(User).filter(
-                User.phone_number == request_model.user_phone
-            ).first()
+            if request_model.user_phone:
 
-            if exist_user_phone:
-                return JSONResponse(
-                    status_code=400,
-                    content={
-                        "message": "User with the same phone number already exists"
-                    }
-                )
+                exist_user_phone = session.query(User).filter(
+                    User.phone_number == request_model.user_phone
+                ).first()
+
+                if exist_user_phone:
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "message": "User with the same phone number already exists"
+                        }
+                    )
 
             # -----------------------------------------------------
             # Create account
@@ -290,7 +295,8 @@ def create_account(
 def delete_account(
     account_id: UUID,
     is_active: Optional[bool] = True,
-    session: Session = Depends(get_db)
+    session: Session = Depends(get_db),
+    current_user: User = Depends(require_superadmin),
 ):
     logger.info("Delete account request started")
 
@@ -384,7 +390,8 @@ def delete_account(
     tags=["Authorized API"],
 )
 def deactivated_accounts(
-    session: Session = Depends(get_db)
+    session: Session = Depends(get_db),
+    current_user: User = Depends(require_superadmin),
 ):
     logger.info("Deactivated accounts request started")
 
@@ -394,8 +401,6 @@ def deactivated_accounts(
         get_deactivated_accounts = session.query(Account).filter(
             Account.is_active == False
         ).order_by(Account.created_at.desc()).all()
-
-        session.commit()
 
         return JSONResponse(
             status_code=200,

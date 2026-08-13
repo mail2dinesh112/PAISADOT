@@ -37,7 +37,8 @@ from pydantic import BaseModel, Field
 
 from api.common.models import (
     User,
-    RefreshToken
+    RefreshToken,
+    RoleType
 )
 
 from api.common.session import get_db
@@ -115,7 +116,7 @@ def create_token(
 
     payload = {
         "sub": str(user.id),
-        "account_id": str(user.account_id),
+        "account_id": str(user.account_id) if user.account_id else None,
         "role": user.role_type.value if user.role_type else None,
         "type": token_type,
         "iat": now,
@@ -184,6 +185,24 @@ def get_current_user(
         )
 
     return user
+
+
+# =========================================================
+# REQUIRE SUPER ADMIN
+# =========================================================
+
+def require_superadmin(
+    current_user: User = Depends(get_current_user)
+):
+
+    if current_user.role_type != RoleType.SUPERADMIN:
+
+        raise HTTPException(
+            status_code=403,
+            detail="Permission denied"
+        )
+
+    return current_user
 
 
 # =========================================================
@@ -314,7 +333,7 @@ def login(
                 "expires_at": access_expires_at.isoformat(),
                 "user": {
                     "user_id": str(user.id),
-                    "account_id": str(user.account_id),
+                    "account_id": str(user.account_id) if user.account_id else None,
                     "email": user.email,
                     "username": user.username,
                     "role": (

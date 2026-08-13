@@ -13,10 +13,12 @@ from fastapi import APIRouter, Depends
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from api.common.models import Account, User, RoleType
 from api.common.session import get_db
+from api.authentication.authentication import get_current_user
 from argon2 import PasswordHasher
 import logging
 
@@ -59,10 +61,23 @@ class GetUsersRequestModel(BaseModel):
 def get_users(
     request_model: GetUsersRequestModel,
     session: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     logger.info("Get users request started")
 
     try:
+
+        # =====================================================
+        # TENANT ISOLATION
+        # =====================================================
+        if (
+            current_user.role_type != RoleType.SUPERADMIN
+            and str(current_user.account_id) != str(request_model.account_id)
+        ):
+            return JSONResponse(
+                status_code=403,
+                content={"message": "Permission denied"}
+            )
 
         filters = [User.account_id == str(request_model.account_id)]
 
@@ -98,7 +113,7 @@ def get_users(
 
         users = (
             session.query(User)
-            .filter(*filters)
+            .filter(*filters, User.is_active == True)
             .order_by(User.created_at.desc())
             .offset(request_model.offset)
             .limit(request_model.limit)
@@ -151,6 +166,7 @@ class CreateUserRequestModel(BaseModel):
 def create_user(
     request_model: CreateUserRequestModel,
     session: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     logger.info("Create/Update user request started")
 
@@ -160,6 +176,16 @@ def create_user(
         # CREATE USER
         # =====================================================
         if request_model.user_id is None:
+
+            # TENANT ISOLATION
+            if (
+                current_user.role_type != RoleType.SUPERADMIN
+                and str(current_user.account_id) != str(request_model.account_id)
+            ):
+                return JSONResponse(
+                    status_code=403,
+                    content={"message": "Permission denied"}
+                )
 
             # VALIDATE ACCOUNT
             account = session.query(Account).filter(
@@ -176,30 +202,34 @@ def create_user(
                 )
 
             # CHECK EMAIL DUPLICATE
-            duplicate_email = session.query(User).filter(
-                User.email == str(request_model.email).lower()
-            ).first()
+            if request_model.email:
 
-            if duplicate_email:
-                return JSONResponse(
-                    status_code=400,
-                    content={
-                        "message": "Email already exists"
-                    }
-                )
+                duplicate_email = session.query(User).filter(
+                    User.email == str(request_model.email).lower()
+                ).first()
+
+                if duplicate_email:
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "message": "Email already exists"
+                        }
+                    )
 
             # CHECK PHONE DUPLICATE
-            duplicate_phone = session.query(User).filter(
-                User.phone_number == request_model.phone
-            ).first()
+            if request_model.phone:
 
-            if duplicate_phone:
-                return JSONResponse(
-                    status_code=400,
-                    content={
-                        "message": "Phone number already exists"
-                    }
-                )
+                duplicate_phone = session.query(User).filter(
+                    User.phone_number == request_model.phone
+                ).first()
+
+                if duplicate_phone:
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "message": "Phone number already exists"
+                        }
+                    )
                 
             # CREATE USER
             new_user = User(
@@ -242,33 +272,47 @@ def create_user(
                 }
             )
 
-        # DUPLICATE EMAIL CHECK
-        duplicate_email = session.query(User).filter(
-            User.email == str(request_model.email).lower(),
-            User.id != str(request_model.user_id)
-        ).first()
-
-        if duplicate_email:
+        # TENANT ISOLATION
+        if (
+            current_user.role_type != RoleType.SUPERADMIN
+            and str(current_user.account_id) != str(exist_user.account_id)
+        ):
             return JSONResponse(
-                status_code=400,
-                content={
-                    "message": "Email already exists"
-                }
+                status_code=403,
+                content={"message": "Permission denied"}
             )
+
+        # DUPLICATE EMAIL CHECK
+        if request_model.email is not None:
+
+            duplicate_email = session.query(User).filter(
+                User.email == str(request_model.email).lower(),
+                User.id != str(request_model.user_id)
+            ).first()
+
+            if duplicate_email:
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "message": "Email already exists"
+                    }
+                )
 
         # DUPLICATE PHONE CHECK
-        duplicate_phone = session.query(User).filter(
-            User.phone_number == request_model.phone,
-            User.id != str(request_model.user_id)
-        ).first()
+        if request_model.phone is not None:
 
-        if duplicate_phone:
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "message": "Phone number already exists"
-                }
-            )
+            duplicate_phone = session.query(User).filter(
+                User.phone_number == request_model.phone,
+                User.id != str(request_model.user_id)
+            ).first()
+
+            if duplicate_phone:
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "message": "Phone number already exists"
+                    }
+                )
 
         # UPDATE VALUES
         if request_model.first_name is not None:
@@ -331,11 +375,13 @@ class CreateUserCredentialRequestModel(BaseModel):
 @router.post(
     "/createcredentials",
     operation_id="create_user_credentials",
+    tags=["Authorized API"],
     description="Create user credentials (username & password)"
 )
 def create_user_credentials(
     request_model: CreateUserCredentialRequestModel,
     session: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     logger.info("Create user credentials request started")
 
@@ -352,7 +398,17 @@ def create_user_credentials(
                     "message": "User not found"
                 }
             )
-        
+
+        # TENANT ISOLATION
+        if (
+            current_user.role_type != RoleType.SUPERADMIN
+            and str(current_user.account_id) != str(exist_user.account_id)
+        ):
+            return JSONResponse(
+                status_code=403,
+                content={"message": "Permission denied"}
+            )
+
         duplicate_username = session.query(User).filter(
             User.username == request_model.username,
             User.id != str(request_model.user_id),
@@ -411,15 +467,24 @@ class ResetUserPasswordRequestModel(BaseModel):
 @router.post(
     "/resetpassword",
     operation_id="reset_user_password",
+    tags=["Authorized API"],
     description="Reset user password"
 )
 def reset_user_password(
     request_model: ResetUserPasswordRequestModel,
     session: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     logger.info("Reset user password request started")
 
     try:
+
+        # SELF-SERVICE ONLY
+        if str(current_user.id) != str(request_model.user_id):
+            return JSONResponse(
+                status_code=403,
+                content={"message": "Permission denied"}
+            )
 
         exist_user = session.query(User).filter(
             User.id == str(request_model.user_id)
@@ -432,7 +497,7 @@ def reset_user_password(
                     "message": "User not found"
                 }
             )
-        
+
         # VERIFY CURRENT PASSWORD
         try:
             ph.verify(exist_user.password_hash, request_model.current_password)
@@ -489,15 +554,27 @@ def reset_user_password(
 @router.get(
     "/deactivatedusers",
     operation_id="get_deactivated_users",
+    tags=["Authorized API"],
     description="Get deactivated users"
 )
 def get_deactivated_users(
     account_id: UUID,
     session: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     logger.info("Get deactivated users request started")
 
     try:
+
+        # TENANT ISOLATION
+        if (
+            current_user.role_type != RoleType.SUPERADMIN
+            and str(current_user.account_id) != str(account_id)
+        ):
+            return JSONResponse(
+                status_code=403,
+                content={"message": "Permission denied"}
+            )
 
         users = (
             session.query(User)
@@ -517,6 +594,82 @@ def get_deactivated_users(
     except Exception as e:
 
         logger.exception(f"Error retrieving deactivated users: {str(e)}")
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "message": "Internal server error"
+            }
+        )
+
+# =========================================================
+# DELETE USER (PERMANENT)
+# =========================================================
+
+@router.delete(
+    "/deleteuser",
+    operation_id="delete_user",
+    tags=["Authorized API"],
+    description="Permanently delete a user. Intended for use on already-deactivated users."
+)
+def delete_user(
+    user_id: UUID,
+    session: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    logger.info("Delete user request started")
+
+    try:
+
+        exist_user = session.query(User).filter(
+            User.id == str(user_id)
+        ).first()
+
+        if not exist_user:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "message": "User not found"
+                }
+            )
+
+        # TENANT ISOLATION
+        if (
+            current_user.role_type != RoleType.SUPERADMIN
+            and str(current_user.account_id) != str(exist_user.account_id)
+        ):
+            return JSONResponse(
+                status_code=403,
+                content={"message": "Permission denied"}
+            )
+
+        session.delete(exist_user)
+
+        session.commit()
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                "message": "User permanently deleted"
+            }
+        )
+
+    except IntegrityError:
+
+        session.rollback()
+
+        return JSONResponse(
+            status_code=400,
+            content={
+                "message": "Cannot permanently delete this user — they have existing expenses, categories, or other records. Keep them deactivated instead."
+            }
+        )
+
+    except Exception as e:
+
+        session.rollback()
+
+        logger.exception(f"Error deleting user: {str(e)}")
 
         return JSONResponse(
             status_code=500,

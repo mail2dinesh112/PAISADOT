@@ -186,9 +186,11 @@ class User(Base):
         server_default=expression.true()
     )
 
+    # Nullable because a SUPERADMIN is a platform-level role not scoped to
+    # any single tenant account; every other role must still have one.
     account_id = Column(
         ForeignKey("accounts.id"),
-        nullable=False
+        nullable=True
     )
 
     created_at = Column(
@@ -253,9 +255,11 @@ class Category(Base):
         nullable=False
     )
 
+    # Nullable to allow platform-wide system categories (is_system_category=True),
+    # which are not scoped to any single account — mirrors users.account_id.
     account_id = Column(
         ForeignKey("accounts.id"),
-        nullable=False
+        nullable=True
     )
 
     created_by = Column(
